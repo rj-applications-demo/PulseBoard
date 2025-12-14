@@ -1,0 +1,107 @@
+version: "3.9"
+
+name: pulseboard
+
+services:
+  # -------------------------
+  # Main app database (OLTP)
+  # -------------------------
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: pulseboard-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "${SA_PASSWORD}"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sql_data:/var/opt/mssql
+    networks:
+      - pulseboard-net
+
+  # -------------------------
+  # Redis (for later caching / lookups)
+  # -------------------------
+  redis:
+    image: redis:7
+    container_name: pulseboard-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - pulseboard-net
+
+  # -----------------------------------
+  # Azure Service Bus Emulator + SQL
+  # -----------------------------------
+  sqledge:
+    container_name: pulseboard-sqledge
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${SQLEDGE_SA_PASSWORD}"
+    networks:
+      - pulseboard-net
+
+  servicebus-emulator:
+    container_name: servicebus-emulator
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    depends_on:
+      - sqledge
+    environment:
+      SQL_SERVER: sqledge
+      MSSQL_SA_PASSWORD: "${SQLEDGE_SA_PASSWORD}"
+      ACCEPT_EULA: "Y"
+    volumes:
+      - ./servicebus-config.json:/ServiceBus_Emulator/ConfigFiles/Config.json
+    ports:
+      - "5672:5672"
+    networks:
+      - pulseboard-net
+
+  # -------------------------
+  # API (ingress/front door)
+  # -------------------------
+  api:
+    build:
+      context: .
+      dockerfile: src/Apps/PulseBoard.Api/Dockerfile
+    container_name: pulseboard-api
+    depends_on:
+      - sqlserver
+      - redis
+      - servicebus-emulator
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Development"
+    ports:
+      - "8080:8080"
+    networks:
+      - pulseboard-net
+
+  # -------------------------
+  # Ingestion Worker
+  # -------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: src/Apps/PulseBoard.Ingestion/Dockerfile
+    container_name: pulseboard-worker
+    depends_on:
+      - sqlserver
+      - redis
+      - servicebus-emulator
+    env_file:
+      - .env
+    environment:
+      DOTNET_ENVIRONMENT: "Development"
+    networks:
+      - pulseboard-net
+
+volumes:
+  sql_data:
+
+networks:
+  pulseboard-net:
+    driver: bridge
