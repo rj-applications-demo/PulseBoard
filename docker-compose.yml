@@ -11,10 +11,10 @@ services:
     container_name: pulseboard-sql
     environment:
       ACCEPT_EULA: "Y"
-      SA_PASSWORD: "${SA_PASSWORD}"
+      MSSQL_SA_PASSWORD: "${SA_PASSWORD}"
       MSSQL_PID: "Developer"
     ports:
-      - "1433:1433"
+      - "21433:1433"
     volumes:
       - sql_data:/var/opt/mssql
     networks:
