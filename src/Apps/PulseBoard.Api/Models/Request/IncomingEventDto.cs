@@ -6,5 +6,5 @@ public sealed class IncomingEventDto
     public required string TenantId { get; init; }
     public required string ProjectKey { get; init; }
     public required DateTimeOffset Timestamp { get; init; }
-    public string? Payload { get; init; }   
+    public string? Payload { get; init; }
 }

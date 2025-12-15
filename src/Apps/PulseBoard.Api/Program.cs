@@ -1,4 +1,5 @@
 using Azure.Messaging.ServiceBus;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -45,4 +46,5 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/", () => Results.Ok("PulseBoard API running"));
 app.MapControllers();
+
 app.Run();
