@@ -1,5 +1,3 @@
-using PulseBoard.Domain.Events.Entities;
-
 namespace PulseBoard.Infrastructure.Entities;
 
 public sealed class Tenant

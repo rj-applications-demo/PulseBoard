@@ -1,6 +1,4 @@
-using PulseBoard.Infrastructure.Entities;
-
-namespace PulseBoard.Domain.Events.Entities;
+namespace PulseBoard.Infrastructure.Entities;
 
 public sealed class Project
 {

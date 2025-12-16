@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-using PulseBoard.Domain.Events.Entities;
-
 namespace PulseBoard.Infrastructure.Entities.Configurations;
 
 public sealed class ProjectConfiguration : IEntityTypeConfiguration<Project>

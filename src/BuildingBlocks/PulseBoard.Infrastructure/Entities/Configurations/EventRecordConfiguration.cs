@@ -11,13 +11,17 @@ public sealed class EventRecordConfiguration : IEntityTypeConfiguration<EventRec
 
         builder.HasKey(e => e.Id);
 
-        builder.HasIndex(e => e.EventId)
+        builder.HasIndex(e => new { e.TenantId, e.EventId })
             .IsUnique();
 
         builder.HasIndex(e => new { e.TenantId, e.ProjectKey, e.TimestampUtc });
 
         builder.Property(e => e.Id)
             .UseIdentityColumn();
+
+        builder.Property(e => e.EventId)
+            .HasMaxLength(256)
+            .IsRequired();
 
         builder.Property(e => e.ProjectKey)
             .HasMaxLength(100)
