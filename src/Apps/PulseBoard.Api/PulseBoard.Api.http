@@ -1,21 +1,23 @@
 @host = http://localhost:8080
+@devApiKey = {{$dotenv Seed__Dev__ApiKey}}
 
-# Health check - root endpoint
+### Health check
 GET {{host}}/
 Accept: application/json
 
-###
-
-# Post an event
+### Post an event
 POST {{host}}/events
 Content-Type: application/json
+X-Api-Key: {{devApiKey}}
 
 {
-    "eventId": "evt-001",
-    "tenantId": "tenant-123",
-    "projectKey": "my-project",
-    "timestamp": "2025-12-14T12:00:00Z",
-    "payload": "{\"action\": \"user_signup\", \"userId\": \"u-456\"}"
+    "eventId": "test-event-001",
+    "projectKey": "test-project",
+    "timestamp": "2025-12-16T12:00:00Z",
+    "payload": {
+        "action": "user_login",
+        "userId": 123
+    }
 }
 
 ###

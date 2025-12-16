@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 
-using PulseBoard.Domain.Events.Entities;
 using PulseBoard.Infrastructure.Entities;
 
 namespace PulseBoard.Infrastructure;

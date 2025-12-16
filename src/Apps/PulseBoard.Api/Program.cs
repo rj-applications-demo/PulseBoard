@@ -3,6 +3,7 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+using PulseBoard.Api.Seeding;
 using PulseBoard.Configuration;
 using PulseBoard.Infrastructure;
 
@@ -34,10 +35,21 @@ builder.Services.AddSingleton(sp =>
     return client.CreateSender(opts.QueueName);
 });
 
+// Seeding
+builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection("Seed"));
+builder.Services.AddScoped<DatabaseSeeder>();
+
 // OpenAPI
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+// Run database seeding
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+    await seeder.SeedAsync().ConfigureAwait(false);
+}
 
 if (app.Environment.IsDevelopment())
 {
@@ -47,4 +59,4 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/", () => Results.Ok("PulseBoard API running"));
 app.MapControllers();
 
-app.Run();
+await app.RunAsync().ConfigureAwait(false);

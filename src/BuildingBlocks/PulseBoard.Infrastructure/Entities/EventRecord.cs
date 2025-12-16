@@ -1,5 +1,3 @@
-using PulseBoard.Domain.Events.Entities;
-
 namespace PulseBoard.Infrastructure.Entities;
 
 public sealed class EventRecord
@@ -7,7 +5,7 @@ public sealed class EventRecord
     public long Id { get; private set; }
 
     public required Guid TenantId { get; init; }
-    public required Guid EventId { get; init; }
+    public required string EventId { get; init; }
     public required Guid ProjectId { get; init; }
 
     public required string ProjectKey { get; init; }
