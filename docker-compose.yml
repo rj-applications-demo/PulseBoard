@@ -99,6 +99,25 @@ services:
     networks:
       - pulseboard-net
 
+  # -------------------------
+  # Aggregator Worker
+  # -------------------------
+  aggregator:
+    build:
+      context: .
+      dockerfile: src/Apps/PulseBoard.Aggregator/Dockerfile
+    container_name: pulseboard-aggregator
+    depends_on:
+      - sqlserver
+      - redis
+      - servicebus-emulator
+    env_file:
+      - .env
+    environment:
+      DOTNET_ENVIRONMENT: "Development"
+    networks:
+      - pulseboard-net
+
 volumes:
   sql_data:
 
