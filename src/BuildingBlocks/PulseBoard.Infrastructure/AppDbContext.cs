@@ -11,6 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<EventRecord> EventRecords => Set<EventRecord>();
+    public DbSet<AggregateBucket> AggregateBuckets => Set<AggregateBucket>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
