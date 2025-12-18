@@ -15,21 +15,27 @@ namespace PulseBoard.Ingestion;
 
 public sealed partial class Worker : BackgroundService
 {
+    private const string DefaultMetric = "event.count";
+    private const string OneMinuteInterval = "1m";
+
     private readonly ILogger<Worker> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
 
     private readonly ServiceBusClient _serviceBusClient;
     private readonly ServiceBusOptions _serviceBusOptions;
+    private readonly ServiceBusSender _aggregateSender;
 
     public Worker(
         ILogger<Worker> logger,
         IServiceScopeFactory scopeFactory,
         ServiceBusClient serviceBusClient,
+        ServiceBusSender aggregateSender,
         IOptions<ServiceBusOptions> serviceBusOptions)
     {
         _logger = logger;
         _scopeFactory = scopeFactory;
         _serviceBusClient = serviceBusClient;
+        _aggregateSender = aggregateSender;
         _serviceBusOptions = serviceBusOptions.Value;
     }
 
@@ -107,6 +113,19 @@ public sealed partial class Worker : BackgroundService
         {
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
             await UpdateProjectCountersAsync(db, projectId, msg.Timestamp, ct).ConfigureAwait(false);
+
+            var bucketStart = TruncateToMinute(msg.Timestamp);
+
+            // Upsert aggregate bucket (no dimension)
+            await UpsertAggregateBucketAsync(db, msg.TenantId, projectId, bucketStart, dimensionKey: null, ct).ConfigureAwait(false);
+            await PublishAggregateUpdatedAsync(msg.TenantId, projectId, projectKey, bucketStart, dimensionKey: null, msg.Timestamp, ct).ConfigureAwait(false);
+
+            // If event has dimension, also upsert dimension-specific bucket
+            if (!string.IsNullOrEmpty(msg.DimensionKey))
+            {
+                await UpsertAggregateBucketAsync(db, msg.TenantId, projectId, bucketStart, msg.DimensionKey, ct).ConfigureAwait(false);
+                await PublishAggregateUpdatedAsync(msg.TenantId, projectId, projectKey, bucketStart, msg.DimensionKey, msg.Timestamp, ct).ConfigureAwait(false);
+            }
         }
         catch (DbUpdateException ex) when (IsUniqueEventIdViolation(ex))
         {
@@ -174,5 +193,105 @@ public sealed partial class Worker : BackgroundService
         return msg.Contains("IX_EventRecords_TenantId_EventId", StringComparison.OrdinalIgnoreCase)
                || msg.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
                || msg.Contains("duplicate", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static DateTimeOffset TruncateToMinute(DateTimeOffset timestamp)
+    {
+        return new DateTimeOffset(
+            timestamp.Year,
+            timestamp.Month,
+            timestamp.Day,
+            timestamp.Hour,
+            timestamp.Minute,
+            second: 0,
+            timestamp.Offset);
+    }
+
+    private static async Task UpsertAggregateBucketAsync(
+        AppDbContext db,
+        Guid tenantId,
+        Guid projectId,
+        DateTimeOffset bucketStart,
+        string? dimensionKey,
+        CancellationToken ct)
+    {
+        // Try atomic update first
+        int updated = await db.AggregateBuckets
+            .Where(b => b.TenantId == tenantId
+                && b.ProjectId == projectId
+                && b.Metric == DefaultMetric
+                && b.Interval == OneMinuteInterval
+                && b.BucketStartUtc == bucketStart
+                && b.DimensionKey == dimensionKey)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(b => b.Value, b => b.Value + 1)
+                .SetProperty(b => b.UpdatedUtc, DateTimeOffset.UtcNow),
+            ct).ConfigureAwait(false);
+
+        if (updated > 0)
+            return;
+
+        // Insert new bucket if update didn't find one
+        try
+        {
+            db.AggregateBuckets.Add(new AggregateBucket
+            {
+                TenantId = tenantId,
+                ProjectId = projectId,
+                Metric = DefaultMetric,
+                Interval = OneMinuteInterval,
+                BucketStartUtc = bucketStart,
+                DimensionKey = dimensionKey,
+                Value = 1,
+                UpdatedUtc = DateTimeOffset.UtcNow
+            });
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+        }
+        catch (DbUpdateException)
+        {
+            // Race condition: another process inserted - retry update
+            db.ChangeTracker.Clear();
+            await db.AggregateBuckets
+                .Where(b => b.TenantId == tenantId
+                    && b.ProjectId == projectId
+                    && b.Metric == DefaultMetric
+                    && b.Interval == OneMinuteInterval
+                    && b.BucketStartUtc == bucketStart
+                    && b.DimensionKey == dimensionKey)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(b => b.Value, b => b.Value + 1)
+                    .SetProperty(b => b.UpdatedUtc, DateTimeOffset.UtcNow),
+                ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task PublishAggregateUpdatedAsync(
+        Guid tenantId,
+        Guid projectId,
+        string projectKey,
+        DateTimeOffset bucketStart,
+        string? dimensionKey,
+        DateTimeOffset eventTimestamp,
+        CancellationToken ct)
+    {
+        var msg = new AggregateUpdatedMessage
+        {
+            TenantId = tenantId,
+            ProjectId = projectId,
+            ProjectKey = projectKey,
+            Metric = DefaultMetric,
+            Interval = OneMinuteInterval,
+            BucketStartUtc = bucketStart,
+            DimensionKey = dimensionKey,
+            EventTimestampUtc = eventTimestamp
+        };
+
+        var body = JsonSerializer.SerializeToUtf8Bytes(msg);
+        var sbMessage = new ServiceBusMessage(body)
+        {
+            ContentType = "application/json"
+        };
+
+        await _aggregateSender.SendMessageAsync(sbMessage, ct).ConfigureAwait(false);
     }
 }
