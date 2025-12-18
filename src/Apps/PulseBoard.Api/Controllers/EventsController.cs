@@ -48,7 +48,8 @@ public sealed class EventsController : ControllerBase
             TenantId = tenantId.Value,
             ProjectKey = dto.ProjectKey.Trim(),
             Timestamp = dto.Timestamp,
-            Payload = dto.Payload?.ValueKind == JsonValueKind.Undefined ? null : dto.Payload?.GetRawText()
+            Payload = dto.Payload?.ValueKind == JsonValueKind.Undefined ? null : dto.Payload?.GetRawText(),
+            DimensionKey = FormatDimensionKey(dto.Dimensions)
         };
 
         var body = JsonSerializer.SerializeToUtf8Bytes(msg);
@@ -65,5 +66,16 @@ public sealed class EventsController : ControllerBase
         await _sender.SendMessageAsync(sbMessage, ct).ConfigureAwait(false);
 
         return Accepted(new { eventId = msg.EventId });
+    }
+
+    private static string? FormatDimensionKey(IReadOnlyList<DimensionDto>? dimensions)
+    {
+        if (dimensions is null || dimensions.Count == 0)
+            return null;
+
+        var dim = dimensions[0];
+#pragma warning disable CA1308 // Normalize strings to uppercase - lowercase is intentional for dimension values
+        return $"{dim.Key}:{dim.Value.ToLowerInvariant()}";
+#pragma warning restore CA1308
     }
 }
