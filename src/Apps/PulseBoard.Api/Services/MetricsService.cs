@@ -33,6 +33,7 @@ public sealed class MetricsService : IMetricsService
         // Lookup project
         var project = await _db.Projects
             .AsNoTracking()
+            .TagWith("MetricsService.GetTimeSeries_FindProject")
             .Where(p => p.TenantId == tenantId && p.Key == projectKey)
             .FirstOrDefaultAsync(ct).ConfigureAwait(false);
 
@@ -80,6 +81,7 @@ public sealed class MetricsService : IMetricsService
 
         var topProjects = await _db.AggregateBuckets
             .AsNoTracking()
+            .TagWith("MetricsService.GetTopProjects")
             .Where(b => b.TenantId == tenantId
                 && b.Metric == metric
                 && b.Interval == "1m"
@@ -95,6 +97,7 @@ public sealed class MetricsService : IMetricsService
         var projectIds = topProjects.Select(p => p.ProjectId).ToList();
         var projectKeys = await _db.Projects
             .AsNoTracking()
+            .TagWith("MetricsService.GetTopProjects_ProjectKeys")
             .Where(p => projectIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, p => p.Key, ct).ConfigureAwait(false);
 
@@ -174,45 +177,41 @@ public sealed class MetricsService : IMetricsService
     {
         var query = _db.AggregateBuckets
             .AsNoTracking()
+            .TagWith("MetricsService.GetFromSql")
             .Where(b => b.TenantId == tenantId
                 && b.ProjectId == projectId
                 && b.Metric == metric
-                && b.Interval == "1m"
-                && b.DimensionKey == dimensionKey);
+                && b.Interval == "1m");
 
-        if (fromUtc.HasValue)
-            query = query.Where(b => b.BucketStartUtc >= fromUtc.Value);
+        // If dimension specified, filter by it; otherwise return all (no dimension filter)
+        if (dimensionKey is not null)
+            query = query.Where(b => b.DimensionKey == dimensionKey);
 
         if (toUtc.HasValue)
             query = query.Where(b => b.BucketStartUtc <= toUtc.Value);
 
-        // Apply different aggregation based on interval
-        if (interval == "60s")
+        // Apply time range filter - use provided fromUtc or default based on interval
+        if (fromUtc.HasValue)
         {
-            // For 60s, get last minute data
-            var cutoff = DateTimeOffset.UtcNow.AddMinutes(-1);
-            return await query
-                .Where(b => b.BucketStartUtc >= cutoff)
-                .OrderBy(b => b.BucketStartUtc)
-                .Select(b => new TimeSeriesPoint { Timestamp = b.BucketStartUtc, Value = b.Value })
-                .ToListAsync(ct).ConfigureAwait(false);
+            query = query.Where(b => b.BucketStartUtc >= fromUtc.Value);
         }
-        else if (interval == "60m")
+        else
         {
-            // Get last 60 minutes of 1-minute buckets
-            var cutoff = DateTimeOffset.UtcNow.AddMinutes(-60);
-            return await query
-                .Where(b => b.BucketStartUtc >= cutoff)
-                .OrderBy(b => b.BucketStartUtc)
-                .Select(b => new TimeSeriesPoint { Timestamp = b.BucketStartUtc, Value = b.Value })
-                .ToListAsync(ct).ConfigureAwait(false);
+            // Apply default cutoff based on interval
+            var cutoff = interval switch
+            {
+                "60s" => DateTimeOffset.UtcNow.AddMinutes(-1),
+                "60m" => DateTimeOffset.UtcNow.AddMinutes(-60),
+                _ => DateTimeOffset.UtcNow.AddHours(-24)
+            };
+            query = query.Where(b => b.BucketStartUtc >= cutoff);
         }
-        else // 24h
+
+        // Apply aggregation based on interval
+        if (interval == "24h")
         {
-            // Get last 24 hours, aggregated by hour
-            var cutoff = DateTimeOffset.UtcNow.AddHours(-24);
+            // Aggregate by hour for 24h view
             return await query
-                .Where(b => b.BucketStartUtc >= cutoff)
                 .GroupBy(b => new { b.BucketStartUtc.Year, b.BucketStartUtc.Month, b.BucketStartUtc.Day, b.BucketStartUtc.Hour })
                 .Select(g => new TimeSeriesPoint
                 {
@@ -222,6 +221,12 @@ public sealed class MetricsService : IMetricsService
                 .OrderBy(p => p.Timestamp)
                 .ToListAsync(ct).ConfigureAwait(false);
         }
+
+        // For 60s and 60m, return raw 1-minute buckets
+        return await query
+            .OrderBy(b => b.BucketStartUtc)
+            .Select(b => new TimeSeriesPoint { Timestamp = b.BucketStartUtc, Value = b.Value })
+            .ToListAsync(ct).ConfigureAwait(false);
     }
 
     private static (DateTimeOffset from, DateTimeOffset to) GetTimeRangeForInterval(string interval)

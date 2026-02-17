@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "pulseboard-api"
+    static_configs:
+      - targets: ["api:8080"]
+    metrics_path: /metrics
+
+  - job_name: "pulseboard-ingestion"
+    static_configs:
+      - targets: ["worker:9464"]
+    metrics_path: /metrics
+
+  - job_name: "pulseboard-aggregator"
+    static_configs:
+      - targets: ["aggregator:9465"]
+    metrics_path: /metrics

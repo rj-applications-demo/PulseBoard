@@ -3,6 +3,10 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
+
 using PulseBoard.Aggregator;
 using PulseBoard.Aggregator.Services;
 using PulseBoard.Configuration;
@@ -13,6 +17,16 @@ using StackExchange.Redis;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddPulseBoardCore("PulseBoard.Aggregator");
+
+// OpenTelemetry
+var otel = builder.AddPulseBoardTelemetry("PulseBoard.Aggregator");
+otel.WithTracing(tracing => tracing
+    .AddRedisInstrumentation());
+otel.WithMetrics(metrics => metrics
+    .AddPrometheusHttpListener(options =>
+    {
+        options.UriPrefixes = ["http://*:9465/"];
+    }));
 
 builder.Services.AddDbContext<AppDbContext>(options =>
 {

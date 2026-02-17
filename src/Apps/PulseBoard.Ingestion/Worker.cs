@@ -153,6 +153,7 @@ public sealed partial class Worker : BackgroundService
     {
         Guid? projectId = await db.Projects
             .AsNoTracking()
+            .TagWith("Ingestion.Worker.EnsureProject")
             .Where(p => p.TenantId == tenantId && p.Key == projectKey)
             .Select(p => (Guid?)p.Id)
             .FirstOrDefaultAsync(ct).ConfigureAwait(false);
@@ -172,6 +173,7 @@ public sealed partial class Worker : BackgroundService
         {
             db.Entry(project).State = EntityState.Detached;
             return await db.Projects
+                .TagWith("Ingestion.Worker.EnsureProject_Retry")
                 .Where(p => p.TenantId == tenantId && p.Key == projectKey)
                 .Select(p => p.Id)
                 .FirstAsync(ct).ConfigureAwait(false);
@@ -181,6 +183,7 @@ public sealed partial class Worker : BackgroundService
     private static async Task UpdateProjectCountersAsync(AppDbContext db, Guid projectId, DateTimeOffset timestampUtc, CancellationToken ct)
     {
         await db.Projects
+            .TagWith("Ingestion.Worker.UpdateProjectCounters")
             .Where(p => p.Id == projectId)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(p => p.TotalEventCount, p => p.TotalEventCount + 1)
@@ -217,6 +220,7 @@ public sealed partial class Worker : BackgroundService
     {
         // Try atomic update first
         int updated = await db.AggregateBuckets
+            .TagWith("Ingestion.Worker.UpsertAggregateBucket")
             .Where(b => b.TenantId == tenantId
                 && b.ProjectId == projectId
                 && b.Metric == DefaultMetric
@@ -252,6 +256,7 @@ public sealed partial class Worker : BackgroundService
             // Race condition: another process inserted - retry update
             db.ChangeTracker.Clear();
             await db.AggregateBuckets
+                .TagWith("Ingestion.Worker.UpsertAggregateBucket_Retry")
                 .Where(b => b.TenantId == tenantId
                     && b.ProjectId == projectId
                     && b.Metric == DefaultMetric

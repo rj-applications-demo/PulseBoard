@@ -18,6 +18,7 @@ public static class ApiKeyAuthenticator
         var hash = Sha256Hex(rawApiKey);
 
         ApiKey? apiKey = await db.ApiKeys
+            .TagWith("ApiKeyAuthenticator.TryResolveTenantId")
             .Where(k => k.IsActive && k.KeyHash == hash)
             .SingleOrDefaultAsync(ct)
             .ConfigureAwait(false);

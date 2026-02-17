@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Azure.Messaging.ServiceBus" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.HttpListener" />
   </ItemGroup>
 
   <ItemGroup>

@@ -3,6 +3,10 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
+
 using PulseBoard.Api.Hubs;
 using PulseBoard.Api.Seeding;
 using PulseBoard.Api.Services;
@@ -15,6 +19,15 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Shared core config (logging + options + validation)
 builder.AddPulseBoardCore("PulseBoard.Api");
+
+// OpenTelemetry
+var otel = builder.AddPulseBoardTelemetry("PulseBoard.Api");
+otel.WithTracing(tracing => tracing
+    .AddAspNetCoreInstrumentation()
+    .AddRedisInstrumentation());
+otel.WithMetrics(metrics => metrics
+    .AddAspNetCoreInstrumentation()
+    .AddPrometheusExporter());
 
 builder.Services.AddControllers();
 
@@ -77,5 +90,6 @@ if (app.Environment.IsDevelopment())
 app.MapGet("/", () => Results.Ok("PulseBoard API running"));
 app.MapControllers();
 app.MapHub<MetricsHub>("/hubs/metrics");
+app.MapPrometheusScrapingEndpoint();
 
 await app.RunAsync().ConfigureAwait(false);
