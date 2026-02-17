@@ -3,6 +3,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+
 namespace PulseBoard.Configuration;
 
 public static class PulseBoardBuilderExtensions
@@ -23,11 +28,10 @@ public static class PulseBoardBuilderExtensions
 
         // -------- Logging --------
         builder.Logging.ClearProviders();
-        builder.Logging.AddSimpleConsole(options =>
+        builder.Logging.AddJsonConsole(options =>
         {
-            options.SingleLine = true;
-            options.TimestampFormat = "HH:mm:ss ";
-            options.IncludeScopes = false;
+            options.UseUtcTimestamp = true;
+            options.TimestampFormat = "yyyy-MM-ddTHH:mm:ss.fffZ";
         });
 
         builder.Logging.SetMinimumLevel(LogLevel.Information);
@@ -71,5 +75,49 @@ public static class PulseBoardBuilderExtensions
             .ValidateOnStart();
 
         return builder;
+    }
+
+    /// <summary>
+    /// Configure shared OpenTelemetry telemetry: resource identity,
+    /// common tracing/metrics instrumentation, and OTLP trace export to Tempo.
+    /// Returns <see cref="IOpenTelemetryBuilder"/> for app-specific chaining.
+    /// </summary>
+    public static IOpenTelemetryBuilder AddPulseBoardTelemetry(
+        this IHostApplicationBuilder builder,
+        string serviceName)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        var otlpEndpoint = builder.Configuration["Otlp:Endpoint"] ?? "http://tempo:4317";
+
+        var otel = builder.Services.AddOpenTelemetry();
+
+        otel.ConfigureResource(resource => resource
+            .AddService(
+                serviceName: serviceName,
+                serviceNamespace: "PulseBoard",
+                serviceVersion: typeof(PulseBoardBuilderExtensions).Assembly
+                    .GetName().Version?.ToString() ?? "0.0.0"));
+
+        otel.WithTracing(tracing => tracing
+            .AddHttpClientInstrumentation()
+            .AddSqlClientInstrumentation(options =>
+            {
+                options.SetDbStatementForText = true;
+                options.RecordException = true;
+            })
+            .AddOtlpExporter(options =>
+            {
+                options.Endpoint = new Uri(otlpEndpoint);
+            }));
+
+        otel.WithMetrics(metrics => metrics
+            .AddRuntimeInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddMeter("Microsoft.AspNetCore.Hosting")
+            .AddMeter("Microsoft.AspNetCore.Server.Kestrel")
+            .AddMeter("System.Net.Http"));
+
+        return otel;
     }
 }

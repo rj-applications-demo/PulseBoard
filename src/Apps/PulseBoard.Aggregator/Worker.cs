@@ -189,6 +189,7 @@ public sealed partial class Worker : BackgroundService
 
         // Get distinct tenant/project/metric/dimension combinations with recent activity
         var activeKeys = await db.AggregateBuckets
+            .TagWith("Aggregator.Worker.RefreshLongIntervals_ActiveKeys")
             .Where(b => b.BucketStartUtc >= twentyFourHoursAgo)
             .Select(b => new { b.TenantId, b.ProjectId, b.Metric, b.DimensionKey })
             .Distinct()
@@ -198,6 +199,7 @@ public sealed partial class Worker : BackgroundService
         {
             // Refresh 60m series
             var sixtyMinuteBuckets = await db.AggregateBuckets
+                .TagWith("Aggregator.Worker.RefreshLongIntervals_60mBuckets")
                 .Where(b => b.TenantId == key.TenantId
                     && b.ProjectId == key.ProjectId
                     && b.Metric == key.Metric
@@ -221,6 +223,7 @@ public sealed partial class Worker : BackgroundService
 
             // Refresh 24h series (aggregated by hour)
             var twentyFourHourBuckets = await db.AggregateBuckets
+                .TagWith("Aggregator.Worker.RefreshLongIntervals_24hBuckets")
                 .Where(b => b.TenantId == key.TenantId
                     && b.ProjectId == key.ProjectId
                     && b.Metric == key.Metric

@@ -11,9 +11,9 @@ Content-Type: application/json
 X-Api-Key: {{devApiKey}}
 
 {
-    "eventId": "test-event-001",
+    "eventId": "{{$guid}}",
     "projectKey": "test-project",
-    "timestamp": "2025-12-16T12:00:00Z",
+    "timestamp": "{{$datetime iso8601}}",
     "payload": {
         "action": "user_login",
         "userId": 123
@@ -26,9 +26,9 @@ Content-Type: application/json
 X-Api-Key: {{devApiKey}}
 
 {
-    "eventId": "test-event-002",
+    "eventId": "{{$guid}}",
     "projectKey": "test-project",
-    "timestamp": "2025-12-16T12:01:00Z",
+    "timestamp": "{{$datetime iso8601}}",
     "payload": {
         "amount": 99.99
     },
@@ -36,5 +36,42 @@ X-Api-Key: {{devApiKey}}
         { "key": "type", "value": "checkout" }
     ]
 }
+
+### ========== METRICS ==========
+
+### Get time series (60 seconds, default)
+GET {{host}}/api/metrics/timeseries?projectKey=test-project
+Accept: application/json
+X-Api-Key: {{devApiKey}}
+
+### Get time series (60 minutes)
+GET {{host}}/api/metrics/timeseries?projectKey=test-project&interval=60m
+Accept: application/json
+X-Api-Key: {{devApiKey}}
+
+### Get time series (24 hours)
+GET {{host}}/api/metrics/timeseries?projectKey=test-project&interval=24h
+Accept: application/json
+X-Api-Key: {{devApiKey}}
+
+### Get time series with dimension filter
+GET {{host}}/api/metrics/timeseries?projectKey=test-project&interval=60m&dimension=type:checkout
+Accept: application/json
+X-Api-Key: {{devApiKey}}
+
+### Get top projects (default: 60m, limit 10)
+GET {{host}}/api/metrics/top
+Accept: application/json
+X-Api-Key: {{devApiKey}}
+
+### Get top projects (24 hours, limit 5)
+GET {{host}}/api/metrics/top?interval=24h&limit=5
+Accept: application/json
+X-Api-Key: {{devApiKey}}
+
+### Get top projects with dimension filter
+GET {{host}}/api/metrics/top?interval=60m&dimension=type:checkout&limit=10
+Accept: application/json
+X-Api-Key: {{devApiKey}}
 
 ###

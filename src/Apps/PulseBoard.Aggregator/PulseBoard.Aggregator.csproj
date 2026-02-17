@@ -11,6 +11,8 @@
     <PackageReference Include="Azure.Messaging.ServiceBus" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="StackExchange.Redis" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.StackExchangeRedis" />
+    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.HttpListener" />
   </ItemGroup>
 
   <ItemGroup>

@@ -40,7 +40,7 @@ public sealed partial class DatabaseSeeder
 
     private async Task EnsureTenantAsync(string name, string? rawApiKey, CancellationToken ct)
     {
-        Tenant? tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Name == name, ct).ConfigureAwait(false);
+        Tenant? tenant = await _db.Tenants.TagWith("DatabaseSeeder.EnsureTenant").FirstOrDefaultAsync(t => t.Name == name, ct).ConfigureAwait(false);
 
         if (tenant is null)
         {
@@ -54,7 +54,7 @@ public sealed partial class DatabaseSeeder
             return;
 
         string keyHash = Sha256Hex(rawApiKey);
-        bool keyExists = await _db.ApiKeys.AnyAsync(k => k.TenantId == tenant.Id && k.KeyHash == keyHash, ct).ConfigureAwait(false);
+        bool keyExists = await _db.ApiKeys.TagWith("DatabaseSeeder.EnsureTenant_CheckApiKeyExists").AnyAsync(k => k.TenantId == tenant.Id && k.KeyHash == keyHash, ct).ConfigureAwait(false);
 
         if (!keyExists)
         {

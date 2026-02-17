@@ -49,6 +49,7 @@ public sealed class RedisTimeSeriesService : IRedisTimeSeriesService
         var endSecond = now.ToUnixTimeSeconds();
 
         var entries = new List<SortedSetEntry>();
+        string hashKey = BuildTimeSeriesHashKey(tenantId, projectId, metric, dimensionKey, "60s");
 
         for (long sec = startSecond; sec <= endSecond; sec++)
         {
@@ -59,10 +60,7 @@ public sealed class RedisTimeSeriesService : IRedisTimeSeriesService
             {
                 string secStr = sec.ToString(CultureInfo.InvariantCulture);
                 entries.Add(new SortedSetEntry(secStr, sec));
-                // Store the actual count in a hash for retrieval
-                string hashKey = BuildTimeSeriesHashKey(tenantId, projectId, metric, dimensionKey, "60s");
                 await db.HashSetAsync(hashKey, secStr, count).ConfigureAwait(false);
-                await db.KeyExpireAsync(hashKey, TimeSpan.FromSeconds(SixtySecondSeriesTtlSeconds)).ConfigureAwait(false);
             }
         }
 
@@ -74,6 +72,7 @@ public sealed class RedisTimeSeriesService : IRedisTimeSeriesService
             await db.SortedSetRemoveRangeByScoreAsync(sortedSetKey, double.NegativeInfinity, startSecond - 1).ConfigureAwait(false);
             await db.SortedSetAddAsync(sortedSetKey, entries.ToArray()).ConfigureAwait(false);
             await db.KeyExpireAsync(sortedSetKey, TimeSpan.FromSeconds(SixtySecondSeriesTtlSeconds)).ConfigureAwait(false);
+            await db.KeyExpireAsync(hashKey, TimeSpan.FromSeconds(SixtySecondSeriesTtlSeconds)).ConfigureAwait(false);
         }
     }
 
@@ -89,7 +88,15 @@ public sealed class RedisTimeSeriesService : IRedisTimeSeriesService
         string sortedSetKey = BuildTimeSeriesKey(tenantId, projectId, metric, dimensionKey, interval);
         string hashKey = BuildTimeSeriesHashKey(tenantId, projectId, metric, dimensionKey, interval);
 
-        var members = await db.SortedSetRangeByRankAsync(sortedSetKey).ConfigureAwait(false);
+        long windowSeconds = interval switch
+        {
+            "60s" => 60,
+            "60m" => 3600,
+            _ => 86400
+        };
+        
+        long cutoff = DateTimeOffset.UtcNow.AddSeconds(-windowSeconds).ToUnixTimeSeconds();
+        var members = await db.SortedSetRangeByScoreAsync(sortedSetKey, cutoff).ConfigureAwait(false);
         var result = new List<TimeSeriesDataPoint>();
 
         foreach (var member in members)
@@ -137,6 +144,9 @@ public sealed class RedisTimeSeriesService : IRedisTimeSeriesService
 
         if (entries.Count > 0)
         {
+            long windowSeconds = interval == "60m" ? 3600 : 86400;
+            long cutoff = DateTimeOffset.UtcNow.AddSeconds(-windowSeconds).ToUnixTimeSeconds();
+            await db.SortedSetRemoveRangeByScoreAsync(sortedSetKey, double.NegativeInfinity, cutoff - 1).ConfigureAwait(false);
             await db.SortedSetAddAsync(sortedSetKey, entries.ToArray()).ConfigureAwait(false);
             await db.KeyExpireAsync(sortedSetKey, TimeSpan.FromSeconds(ttl)).ConfigureAwait(false);
             await db.KeyExpireAsync(hashKey, TimeSpan.FromSeconds(ttl)).ConfigureAwait(false);
