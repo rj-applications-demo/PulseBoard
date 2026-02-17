@@ -7,4 +7,5 @@ public sealed class IncomingEventMessage
     public required string ProjectKey { get; init; }
     public required DateTimeOffset Timestamp { get; init; }
     public string? Payload { get; init; }
+    public string? DimensionKey { get; init; }
 }

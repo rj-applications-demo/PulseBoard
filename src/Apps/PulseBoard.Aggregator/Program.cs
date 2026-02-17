@@ -3,19 +3,31 @@ using Azure.Messaging.ServiceBus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
+using PulseBoard.Aggregator;
+using PulseBoard.Aggregator.Services;
 using PulseBoard.Configuration;
 using PulseBoard.Infrastructure;
-using PulseBoard.Ingestion;
+
+using StackExchange.Redis;
 
 var builder = Host.CreateApplicationBuilder(args);
 
-builder.AddPulseBoardCore("PulseBoard.Ingestion");
+builder.AddPulseBoardCore("PulseBoard.Aggregator");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
     var cs = builder.Configuration.GetConnectionString("Sql")!;
     options.UseSqlServer(cs);
 });
+
+// Redis
+builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
+{
+    var opts = sp.GetRequiredService<IOptions<RedisOptions>>().Value;
+    return ConnectionMultiplexer.Connect(opts.ConnectionString!);
+});
+
+builder.Services.AddSingleton<IRedisTimeSeriesService, RedisTimeSeriesService>();
 
 // Service Bus client
 builder.Services.AddSingleton(sp =>
@@ -24,12 +36,12 @@ builder.Services.AddSingleton(sp =>
     return new ServiceBusClient(opts.ConnectionString);
 });
 
-// Service Bus sender for aggregate updates topic
+// Service Bus sender for cached aggregate updates topic
 builder.Services.AddSingleton(sp =>
 {
     var opts = sp.GetRequiredService<IOptions<ServiceBusOptions>>().Value;
     var client = sp.GetRequiredService<ServiceBusClient>();
-    return client.CreateSender(opts.AggregateUpdatesTopicName);
+    return client.CreateSender(opts.CachedAggregateUpdatesTopicName);
 });
 
 builder.Services.AddHostedService<Worker>();

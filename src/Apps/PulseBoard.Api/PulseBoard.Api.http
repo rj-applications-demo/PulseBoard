@@ -20,4 +20,21 @@ X-Api-Key: {{devApiKey}}
     }
 }
 
+### Post an event with dimension
+POST {{host}}/events
+Content-Type: application/json
+X-Api-Key: {{devApiKey}}
+
+{
+    "eventId": "test-event-002",
+    "projectKey": "test-project",
+    "timestamp": "2025-12-16T12:01:00Z",
+    "payload": {
+        "amount": 99.99
+    },
+    "dimensions": [
+        { "key": "type", "value": "checkout" }
+    ]
+}
+
 ###
