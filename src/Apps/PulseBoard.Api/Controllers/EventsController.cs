@@ -3,13 +3,10 @@ using System.Text.Json;
 using Azure.Messaging.ServiceBus;
 
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Primitives;
 
-using PulseBoard.Api.Auth;
 using PulseBoard.Api.Models.Request;
 using PulseBoard.Api.Validation;
 using PulseBoard.Contracts.Messaging;
-using PulseBoard.Infrastructure;
 
 namespace PulseBoard.Api.Controllers;
 
@@ -18,26 +15,16 @@ namespace PulseBoard.Api.Controllers;
 public sealed class EventsController : ControllerBase
 {
     private readonly ServiceBusSender _sender;
-    private readonly AppDbContext _db;
 
-    public EventsController(ServiceBusSender sender, AppDbContext db)
+    public EventsController(ServiceBusSender sender)
     {
         _sender = sender;
-        _db = db;
     }
 
     [HttpPost]
     public async Task<IActionResult> Post([FromBody] IncomingEventDto dto, CancellationToken ct)
     {
-        if (!Request.Headers.TryGetValue("X-Api-Key", out StringValues apiKeyHeader) ||
-            string.IsNullOrWhiteSpace(apiKeyHeader))
-        {
-            return Unauthorized(new { error = "Missing X-Api-Key header." });
-        }
-
-        Guid? tenantId = await ApiKeyAuthenticator.TryResolveTenantIdAsync(_db, apiKeyHeader!, ct).ConfigureAwait(false);
-        if (tenantId is null)
-            return Unauthorized(new { error = "Invalid API key." });
+        var tenantId = (Guid)HttpContext.Items["TenantId"]!;
 
         if (!IncomingEventDtoValidator.TryValidate(dto, out var error))
             return BadRequest(new { error });
@@ -45,7 +32,7 @@ public sealed class EventsController : ControllerBase
         var msg = new IncomingEventMessage
         {
             EventId = dto.EventId.Trim(),
-            TenantId = tenantId.Value,
+            TenantId = tenantId,
             ProjectKey = dto.ProjectKey.Trim(),
             Timestamp = dto.Timestamp,
             Payload = dto.Payload?.ValueKind == JsonValueKind.Undefined ? null : dto.Payload?.GetRawText(),

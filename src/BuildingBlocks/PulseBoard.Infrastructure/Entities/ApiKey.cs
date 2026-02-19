@@ -1,3 +1,5 @@
+using PulseBoard.Domain;
+
 namespace PulseBoard.Infrastructure.Entities;
 
 public sealed class ApiKey
@@ -11,6 +13,7 @@ public sealed class ApiKey
     public required string KeyHash { get; init; }
 
     public bool IsActive { get; set; } = true;
+    public ApiKeyTier Tier { get; set; } = ApiKeyTier.Free;
 
     public DateTimeOffset CreatedUtc { get; private set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? LastUsedUtc { get; set; }

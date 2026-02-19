@@ -3,14 +3,17 @@ using System.Text;
 
 using Microsoft.EntityFrameworkCore;
 
+using PulseBoard.Domain;
 using PulseBoard.Infrastructure;
 using PulseBoard.Infrastructure.Entities;
 
 namespace PulseBoard.Api.Auth;
 
+public sealed record ApiKeyIdentity(Guid TenantId, ApiKeyTier Tier);
+
 public static class ApiKeyAuthenticator
 {
-    public static async Task<Guid?> TryResolveTenantIdAsync(
+    public static async Task<ApiKeyIdentity?> TryResolveAsync(
         AppDbContext db,
         string rawApiKey,
         CancellationToken ct)
@@ -18,7 +21,7 @@ public static class ApiKeyAuthenticator
         var hash = Sha256Hex(rawApiKey);
 
         ApiKey? apiKey = await db.ApiKeys
-            .TagWith("ApiKeyAuthenticator.TryResolveTenantId")
+            .TagWith("ApiKeyAuthenticator.TryResolve")
             .Where(k => k.IsActive && k.KeyHash == hash)
             .SingleOrDefaultAsync(ct)
             .ConfigureAwait(false);
@@ -28,10 +31,10 @@ public static class ApiKeyAuthenticator
         apiKey.LastUsedUtc = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct).ConfigureAwait(false);
 
-        return apiKey.TenantId;
+        return new ApiKeyIdentity(apiKey.TenantId, apiKey.Tier);
     }
 
-    private static string Sha256Hex(string value)
+    internal static string Sha256Hex(string value)
     {
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
         return Convert.ToHexString(bytes);

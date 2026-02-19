@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using PulseBoard.Configuration;
+using PulseBoard.Domain;
 using PulseBoard.Infrastructure;
 using PulseBoard.Infrastructure.Entities;
 
@@ -29,16 +30,21 @@ public sealed partial class DatabaseSeeder
     [LoggerMessage(LogLevel.Information, "Seeded tenant: {TenantName} ({TenantId})")]
     private partial void LogSeededTenant(string tenantName, Guid tenantId);
 
-    [LoggerMessage(LogLevel.Information, "Seeded API key for tenant: {TenantName}")]
-    private partial void LogSeededApiKey(string tenantName);
+    [LoggerMessage(LogLevel.Information, "Seeded API key for tenant: {TenantName} (Tier={Tier})")]
+    private partial void LogSeededApiKey(string tenantName, ApiKeyTier tier);
 
     public async Task SeedAsync(CancellationToken ct = default)
     {
-        await EnsureTenantAsync("Guest", _options.Guest.ApiKey, ct).ConfigureAwait(false);
-        await EnsureTenantAsync("Dev", _options.Dev.ApiKey, ct).ConfigureAwait(false);
+        await EnsureTenantAsync("Guest", _options.Guest, ct).ConfigureAwait(false);
+        await EnsureTenantAsync("Dev", _options.Dev, ct).ConfigureAwait(false);
+
+        if (!string.IsNullOrWhiteSpace(_options.Pro.ApiKey))
+        {
+            await EnsureTenantAsync("Pro", _options.Pro, ct).ConfigureAwait(false);
+        }
     }
 
-    private async Task EnsureTenantAsync(string name, string? rawApiKey, CancellationToken ct)
+    private async Task EnsureTenantAsync(string name, TenantSeedOptions seedOptions, CancellationToken ct)
     {
         Tenant? tenant = await _db.Tenants.TagWith("DatabaseSeeder.EnsureTenant").FirstOrDefaultAsync(t => t.Name == name, ct).ConfigureAwait(false);
 
@@ -50,22 +56,33 @@ public sealed partial class DatabaseSeeder
             LogSeededTenant(name, tenant.Id);
         }
 
-        if (string.IsNullOrWhiteSpace(rawApiKey))
+        if (string.IsNullOrWhiteSpace(seedOptions.ApiKey))
             return;
 
-        string keyHash = Sha256Hex(rawApiKey);
-        bool keyExists = await _db.ApiKeys.TagWith("DatabaseSeeder.EnsureTenant_CheckApiKeyExists").AnyAsync(k => k.TenantId == tenant.Id && k.KeyHash == keyHash, ct).ConfigureAwait(false);
+        string keyHash = Sha256Hex(seedOptions.ApiKey);
 
-        if (!keyExists)
+        ApiKey? existingKey = await _db.ApiKeys
+            .TagWith("DatabaseSeeder.EnsureTenant_CheckApiKeyExists")
+            .FirstOrDefaultAsync(k => k.TenantId == tenant.Id && k.KeyHash == keyHash, ct)
+            .ConfigureAwait(false);
+
+        if (existingKey is null)
         {
             _db.ApiKeys.Add(new ApiKey
             {
                 TenantId = tenant.Id,
                 Name = $"{name} Seed Key",
-                KeyHash = keyHash
+                KeyHash = keyHash,
+                Tier = seedOptions.Tier
             });
             await _db.SaveChangesAsync(ct).ConfigureAwait(false);
-            LogSeededApiKey(name);
+            LogSeededApiKey(name, seedOptions.Tier);
+        }
+        else if (existingKey.Tier != seedOptions.Tier)
+        {
+            existingKey.Tier = seedOptions.Tier;
+            await _db.SaveChangesAsync(ct).ConfigureAwait(false);
+            LogSeededApiKey(name, seedOptions.Tier);
         }
     }
 
