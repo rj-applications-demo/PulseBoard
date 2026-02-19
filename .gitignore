@@ -90,5 +90,10 @@ appsettings.*.json
 !appsettings.json
 !appsettings.Development.json
 
+# Node.js / Frontend
+node_modules/
+dist/
+
 # Claude Code
 .claude/
+CLAUDE.md

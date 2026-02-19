@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-pulse-50: #ecfeff;
+  --color-pulse-100: #cffafe;
+  --color-pulse-200: #a5f3fc;
+  --color-pulse-300: #67e8f9;
+  --color-pulse-400: #22d3ee;
+  --color-pulse-500: #06b6d4;
+  --color-pulse-600: #0891b2;
+  --color-pulse-700: #0e7490;
+  --color-pulse-800: #155e75;
+  --color-pulse-900: #164e63;
+  --color-pulse-950: #083344;
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+}

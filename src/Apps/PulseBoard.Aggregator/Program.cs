@@ -50,14 +50,6 @@ builder.Services.AddSingleton(sp =>
     return new ServiceBusClient(opts.ConnectionString);
 });
 
-// Service Bus sender for cached aggregate updates topic
-builder.Services.AddSingleton(sp =>
-{
-    var opts = sp.GetRequiredService<IOptions<ServiceBusOptions>>().Value;
-    var client = sp.GetRequiredService<ServiceBusClient>();
-    return client.CreateSender(opts.CachedAggregateUpdatesTopicName);
-});
-
 builder.Services.AddHostedService<Worker>();
 
 var host = builder.Build();
