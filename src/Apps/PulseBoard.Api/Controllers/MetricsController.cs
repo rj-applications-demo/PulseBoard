@@ -1,9 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Primitives;
 
-using PulseBoard.Api.Auth;
 using PulseBoard.Api.Services;
-using PulseBoard.Infrastructure;
 
 namespace PulseBoard.Api.Controllers;
 
@@ -12,12 +9,10 @@ namespace PulseBoard.Api.Controllers;
 public sealed class MetricsController : ControllerBase
 {
     private readonly IMetricsService _metricsService;
-    private readonly AppDbContext _db;
 
-    public MetricsController(IMetricsService metricsService, AppDbContext db)
+    public MetricsController(IMetricsService metricsService)
     {
         _metricsService = metricsService;
-        _db = db;
     }
 
     [HttpGet("timeseries")]
@@ -30,15 +25,7 @@ public sealed class MetricsController : ControllerBase
         [FromQuery] DateTimeOffset? to = null,
         CancellationToken ct = default)
     {
-        if (!Request.Headers.TryGetValue("X-Api-Key", out StringValues apiKeyHeader) ||
-            string.IsNullOrWhiteSpace(apiKeyHeader))
-        {
-            return Unauthorized(new { error = "Missing X-Api-Key header." });
-        }
-
-        Guid? tenantId = await ApiKeyAuthenticator.TryResolveTenantIdAsync(_db, apiKeyHeader!, ct).ConfigureAwait(false);
-        if (tenantId is null)
-            return Unauthorized(new { error = "Invalid API key." });
+        var tenantId = (Guid)HttpContext.Items["TenantId"]!;
 
         if (string.IsNullOrWhiteSpace(projectKey))
             return BadRequest(new { error = "projectKey is required." });
@@ -47,7 +34,7 @@ public sealed class MetricsController : ControllerBase
             return BadRequest(new { error = "Invalid interval. Allowed values: 60s, 60m, 24h." });
 
         var result = await _metricsService.GetTimeSeriesAsync(
-            tenantId.Value,
+            tenantId,
             projectKey.Trim(),
             metric,
             interval,
@@ -70,15 +57,7 @@ public sealed class MetricsController : ControllerBase
         [FromQuery] int limit = 10,
         CancellationToken ct = default)
     {
-        if (!Request.Headers.TryGetValue("X-Api-Key", out StringValues apiKeyHeader) ||
-            string.IsNullOrWhiteSpace(apiKeyHeader))
-        {
-            return Unauthorized(new { error = "Missing X-Api-Key header." });
-        }
-
-        Guid? tenantId = await ApiKeyAuthenticator.TryResolveTenantIdAsync(_db, apiKeyHeader!, ct).ConfigureAwait(false);
-        if (tenantId is null)
-            return Unauthorized(new { error = "Invalid API key." });
+        var tenantId = (Guid)HttpContext.Items["TenantId"]!;
 
         if (!IsValidInterval(interval))
             return BadRequest(new { error = "Invalid interval. Allowed values: 60s, 60m, 24h." });
@@ -87,7 +66,7 @@ public sealed class MetricsController : ControllerBase
             return BadRequest(new { error = "Limit must be between 1 and 100." });
 
         var result = await _metricsService.GetTopProjectsAsync(
-            tenantId.Value,
+            tenantId,
             metric,
             interval,
             dimension,

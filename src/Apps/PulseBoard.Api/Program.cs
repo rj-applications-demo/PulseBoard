@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Threading.RateLimiting;
+
 using Azure.Messaging.ServiceBus;
 
 using Microsoft.EntityFrameworkCore;
@@ -7,9 +10,11 @@ using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
+using PulseBoard.Api.Auth;
 using PulseBoard.Api.Seeding;
 using PulseBoard.Api.Services;
 using PulseBoard.Configuration;
+using PulseBoard.Domain;
 using PulseBoard.Infrastructure;
 
 using StackExchange.Redis;
@@ -65,6 +70,59 @@ builder.Services.AddScoped<IMetricsService, MetricsService>();
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection("Seed"));
 builder.Services.AddScoped<DatabaseSeeder>();
 
+// Rate limiting
+var rateLimitConfig = builder.Configuration
+    .GetSection("RateLimiting")
+    .Get<RateLimitOptions>() ?? new RateLimitOptions();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+    {
+        if (!context.Items.TryGetValue("ApiKeyTier", out var tierObj) || tierObj is not ApiKeyTier tier)
+            return RateLimitPartition.GetNoLimiter("anonymous");
+
+        var tenantId = context.Items.TryGetValue("TenantId", out var tenantObj)
+            ? tenantObj?.ToString() ?? "anonymous"
+            : "anonymous";
+
+        var tierConfig = tier switch
+        {
+            ApiKeyTier.Standard => rateLimitConfig.Standard,
+            ApiKeyTier.Premium => rateLimitConfig.Premium,
+            _ => rateLimitConfig.Free
+        };
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: $"{tenantId}:{tier}",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = tierConfig.PermitLimit,
+                Window = TimeSpan.FromSeconds(tierConfig.WindowSeconds),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            });
+    });
+
+    options.OnRejected = async (context, ct) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+
+        var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfterValue)
+            ? retryAfterValue
+            : TimeSpan.FromSeconds(60);
+
+        context.HttpContext.Response.Headers.RetryAfter =
+            ((int)retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            new { error = "Rate limit exceeded. Try again later.", retryAfterSeconds = (int)retryAfter.TotalSeconds },
+            ct).ConfigureAwait(false);
+    };
+});
+
 // OpenAPI
 builder.Services.AddOpenApi();
 
@@ -83,6 +141,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapGet("/", () => Results.Ok("PulseBoard API running"));
+
+// Global auth middleware → rate limiter → controllers
+app.UseMiddleware<ApiKeyMiddleware>();
+app.UseRateLimiter();
+
 app.MapControllers();
 app.MapPrometheusScrapingEndpoint();
 
