@@ -7,7 +7,6 @@ using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 
-using PulseBoard.Api.Hubs;
 using PulseBoard.Api.Seeding;
 using PulseBoard.Api.Services;
 using PulseBoard.Configuration;
@@ -62,10 +61,6 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(sp =>
 // Metrics service
 builder.Services.AddScoped<IMetricsService, MetricsService>();
 
-// SignalR
-builder.Services.AddSignalR();
-builder.Services.AddHostedService<SignalRPusherService>();
-
 // Seeding
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection("Seed"));
 builder.Services.AddScoped<DatabaseSeeder>();
@@ -89,7 +84,6 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/", () => Results.Ok("PulseBoard API running"));
 app.MapControllers();
-app.MapHub<MetricsHub>("/hubs/metrics");
 app.MapPrometheusScrapingEndpoint();
 
 await app.RunAsync().ConfigureAwait(false);

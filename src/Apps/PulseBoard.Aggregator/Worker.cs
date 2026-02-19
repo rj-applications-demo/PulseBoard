@@ -20,7 +20,6 @@ public sealed partial class Worker : BackgroundService
     private readonly IRedisTimeSeriesService _redisService;
 
     private readonly ServiceBusClient _serviceBusClient;
-    private readonly ServiceBusSender _cachedUpdatesSender;
     private readonly ServiceBusOptions _serviceBusOptions;
 
     public Worker(
@@ -28,14 +27,12 @@ public sealed partial class Worker : BackgroundService
         IServiceScopeFactory scopeFactory,
         IRedisTimeSeriesService redisService,
         ServiceBusClient serviceBusClient,
-        ServiceBusSender cachedUpdatesSender,
         IOptions<ServiceBusOptions> serviceBusOptions)
     {
         _logger = logger;
         _scopeFactory = scopeFactory;
         _redisService = redisService;
         _serviceBusClient = serviceBusClient;
-        _cachedUpdatesSender = cachedUpdatesSender;
         _serviceBusOptions = serviceBusOptions.Value;
     }
 
@@ -121,25 +118,6 @@ public sealed partial class Worker : BackgroundService
                 msg.ProjectId,
                 msg.Metric,
                 msg.DimensionKey,
-                ct).ConfigureAwait(false);
-
-            // Get updated time series for 60s interval
-            var sixtySecondSeries = await _redisService.GetTimeSeriesAsync(
-                msg.TenantId,
-                msg.ProjectId,
-                msg.Metric,
-                msg.DimensionKey,
-                "60s",
-                ct).ConfigureAwait(false);
-
-            // Publish cached aggregate update
-            await PublishCachedAggregateUpdateAsync(
-                msg.TenantId,
-                msg.ProjectId,
-                msg.ProjectKey,
-                msg.Metric,
-                msg.DimensionKey,
-                sixtySecondSeries,
                 ct).ConfigureAwait(false);
 
             LogProcessed(_logger, msg.TenantId, msg.ProjectKey, msg.Metric, msg.DimensionKey);
@@ -250,38 +228,6 @@ public sealed partial class Worker : BackgroundService
                     ct).ConfigureAwait(false);
             }
         }
-    }
-
-    private async Task PublishCachedAggregateUpdateAsync(
-        Guid tenantId,
-        Guid projectId,
-        string projectKey,
-        string metric,
-        string? dimensionKey,
-        IReadOnlyList<TimeSeriesDataPoint> sixtySecondSeries,
-        CancellationToken ct)
-    {
-        var msg = new CachedAggregateUpdatedMessage
-        {
-            TenantId = tenantId,
-            ProjectId = projectId,
-            ProjectKey = projectKey,
-            Metric = metric,
-            DimensionKey = dimensionKey,
-            UpdatedIntervals = new[] { "60s" },
-            TimeSeries = new Dictionary<string, IReadOnlyList<TimeSeriesDataPoint>>
-            {
-                ["60s"] = sixtySecondSeries
-            }
-        };
-
-        var body = JsonSerializer.SerializeToUtf8Bytes(msg);
-        var sbMessage = new ServiceBusMessage(body)
-        {
-            ContentType = "application/json"
-        };
-
-        await _cachedUpdatesSender.SendMessageAsync(sbMessage, ct).ConfigureAwait(false);
     }
 
     private static bool TryDeserialize(BinaryData body, [NotNullWhen(true)] out AggregateUpdatedMessage? msg)
