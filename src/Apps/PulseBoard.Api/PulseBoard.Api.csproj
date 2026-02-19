@@ -17,6 +17,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="PulseBoard.Api.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\BuildingBlocks\PulseBoard.Configuration\PulseBoard.Configuration.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\PulseBoard.Contracts\PulseBoard.Contracts.csproj" />
     <ProjectReference Include="..\..\BuildingBlocks\PulseBoard.Domain\PulseBoard.Domain.csproj" />
